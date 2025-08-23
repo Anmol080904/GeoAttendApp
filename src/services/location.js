@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Request location permissions
 export const requestLocationPermission = async () => {
@@ -153,15 +154,25 @@ export const markAttendance = async (type, location) => {
       },
     };
 
-    // In a real app, you would send this to your backend
-    // For now, we'll just return the data
-    console.log('Attendance marked:', attendanceData);
-    
-    return {
-      success: true,
-      message: `${type} marked successfully`,
-      data: attendanceData,
-    };
+    // Send to backend
+    const token = await AsyncStorage.getItem('auth_token');
+    const BASE_URL = process.env.EXPO_PUBLIC_ATTENDANCE_API_BASE_URL || 'https://minor-project-606r.onrender.com/api/attendance';
+    const response = await fetch(`${BASE_URL}/mark/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(attendanceData),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Attendance API failed: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result;
   } catch (error) {
     console.error('Mark attendance error:', error);
     throw new Error('Failed to mark attendance. Please try again.');

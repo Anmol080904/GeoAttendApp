@@ -1,39 +1,35 @@
+// apiService.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://api.geoattend.com'; // Replace with your actual API URL
-const AUTH_TOKEN_KEY = 'auth_token';
+// Centralized configurable base URLs
+const USER_API_BASE_URL = process.env.EXPO_PUBLIC_USER_API_BASE_URL || 'https://minor-project-606r.onrender.com/api/users';
+const ADMIN_API_BASE_URL = process.env.EXPO_PUBLIC_ADMIN_API_BASE_URL || 'https://minor-project-606r.onrender.com/api/admin';
 
-// Helper function to get auth token
+const AUTH_TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+const USER_DATA_KEY = 'user_data';
+
+// ====== Helpers ======
 const getAuthToken = async () => {
-  try {
-    return await AsyncStorage.getItem(AUTH_TOKEN_KEY);
-  } catch (error) {
-    console.error('Error getting auth token:', error);
-    return null;
-  }
+  return await AsyncStorage.getItem(AUTH_TOKEN_KEY);
 };
 
-// Helper function to make authenticated API calls
-const makeAuthenticatedRequest = async (endpoint, options = {}) => {
+const makeAuthenticatedRequest = async (baseUrl, endpoint, options = {}) => {
   const token = await getAuthToken();
-  
-  if (!token) {
-    throw new Error('Authentication required');
-  }
+  if (!token) throw new Error('Authentication required');
 
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
     ...options,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, defaultOptions);
-  
+  const response = await fetch(`${baseUrl}${endpoint}`, defaultOptions);
+
   if (!response.ok) {
     if (response.status === 401) {
-      // Token expired or invalid
       await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
       throw new Error('Session expired. Please login again.');
     }
@@ -43,132 +39,123 @@ const makeAuthenticatedRequest = async (endpoint, options = {}) => {
   return response.json();
 };
 
-// User Profile API calls
-export const getUserProfile = async () => {
-  try {
-    // For now, return mock data from local storage
-    // In a real app, this would be: return makeAuthenticatedRequest('/user/profile');
-    const userData = await AsyncStorage.getItem('user_data');
-    if (userData) {
-      return JSON.parse(userData);
-    }
-    throw new Error('User profile not found');
-  } catch (error) {
-    console.error('Get user profile error:', error);
-    throw error;
-  }
+// ================= USERS =================
+
+// Login User
+export const loginUser = async (username, password) => {
+  const response = await fetch(`${USER_API_BASE_URL}/login/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!response.ok) throw new Error('Invalid credentials');
+
+  const data = await response.json();
+
+  await AsyncStorage.setItem(AUTH_TOKEN_KEY, data.tokens.access);
+  await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.tokens.refresh);
+
+  const user = {
+    id: data.user_id,
+    username,
+    role: data.role,
+  };
+  await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+
+  return { user, token: data.tokens.access };
 };
 
-export const updateUserProfile = async (profileData) => {
-  try {
-    // For now, update local storage
-    // In a real app, this would be: return makeAuthenticatedRequest('/user/profile', { method: 'PUT', body: JSON.stringify(profileData) });
-    const currentUser = await getUserProfile();
-    const updatedUser = { ...currentUser, ...profileData };
-    await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
-    return updatedUser;
-  } catch (error) {
-    console.error('Update user profile error:', error);
-    throw error;
-  }
+// Register User
+export const registerUser = async (formData) => {
+  const response = await fetch(`${USER_API_BASE_URL}/register/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(formData),
+  });
+
+  if (!response.ok) throw new Error('Registration failed');
+  return response.json();
 };
 
-// Attendance API calls
-export const markAttendance = async (type, location) => {
-  try {
-    // For now, return mock success
-    // In a real app, this would be: return makeAuthenticatedRequest('/attendance/mark', { method: 'POST', body: JSON.stringify({ type, location }) });
-    return { success: true, message: `${type} marked successfully` };
-  } catch (error) {
-    console.error('Mark attendance error:', error);
-    throw error;
-  }
+// Logout User
+export const logoutUser = async () => {
+  const refresh = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+
+  const response = await fetch(`${USER_API_BASE_URL}/logout/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh }),
+  });
+
+  await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+  await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
+  await AsyncStorage.removeItem(USER_DATA_KEY);
+
+  return response.json();
 };
 
-export const getAttendanceHistory = async (period = 'week') => {
-  try {
-    // For now, return mock data
-    // In a real app, this would be: return makeAuthenticatedRequest(`/attendance/history?period=${period}`);
-    const mockHistory = generateMockHistory(period);
-    return mockHistory;
-  } catch (error) {
-    console.error('Get attendance history error:', error);
-    throw error;
-  }
+// Update User Profile
+export const updateUserProfile = async (roll, profileData) => {
+  return makeAuthenticatedRequest(USER_API_BASE_URL, `/update/${roll}/`, {
+    method: 'PUT',
+    body: JSON.stringify(profileData),
+  });
 };
 
-// Helper function to generate mock attendance history
-const generateMockHistory = (period) => {
-  const today = new Date();
-  const history = [];
-  
-  let daysToGenerate = 7; // week
-  if (period === 'month') daysToGenerate = 30;
-  if (period === 'year') daysToGenerate = 365;
-
-  for (let i = 0; i < daysToGenerate; i++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    
-    // Skip weekends for demo purposes
-    if (date.getDay() === 0 || date.getDay() === 6) continue;
-    
-    const status = Math.random() > 0.1 ? 'present' : 'absent';
-    const checkIn = status === 'present' ? '9:00 AM' : null;
-    const checkOut = status === 'present' ? '5:00 PM' : null;
-    const hours = status === 'present' ? 8 : 0;
-    
-    history.push({
-      id: `day_${i}`,
-      date: date.toLocaleDateString(),
-      day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-      status,
-      checkIn,
-      checkOut,
-      location: status === 'present' ? 'Office Building' : null,
-      hours,
-    });
-  }
-  
-  return history;
+// Delete User
+export const deleteUser = async (roll) => {
+  return makeAuthenticatedRequest(USER_API_BASE_URL, `/delete/${roll}/`, {
+    method: 'DELETE',
+  });
 };
 
-// Location API calls
-export const getLocationHistory = async () => {
-  try {
-    // For now, return mock data
-    // In a real app, this would be: return makeAuthenticatedRequest('/location/history');
-    return [];
-  } catch (error) {
-    console.error('Get location history error:', error);
-    throw error;
-  }
+// ================= ADMIN =================
+
+// Admin Login
+export const loginAdmin = async (username, password) => {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/login/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!response.ok) throw new Error('Invalid credentials');
+
+  const data = await response.json();
+
+  await AsyncStorage.setItem(AUTH_TOKEN_KEY, data.tokens.access);
+  await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.tokens.refresh);
+
+  const user = {
+    id: data.user_id,
+    username,
+    role: data.role, // "admin" or "superuser"
+  };
+  await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+
+  return { user, token: data.tokens.access };
 };
 
-// Settings API calls
-export const getUserSettings = async () => {
-  try {
-    // For now, return mock data
-    // In a real app, this would be: return makeAuthenticatedRequest('/user/settings');
-    return {
-      notifications: true,
-      locationTracking: true,
-      privacyMode: false,
-    };
-  } catch (error) {
-    console.error('Get user settings error:', error);
-    throw error;
-  }
+// Register Admin
+export const registerAdmin = async (formData) => {
+  return makeAuthenticatedRequest(ADMIN_API_BASE_URL, '/register/', {
+    method: 'POST',
+    body: JSON.stringify(formData),
+  });
 };
 
-export const updateUserSettings = async (settings) => {
-  try {
-    // For now, return mock success
-    // In a real app, this would be: return makeAuthenticatedRequest('/user/settings', { method: 'PUT', body: JSON.stringify(settings) });
-    return { success: true, message: 'Settings updated successfully' };
-  } catch (error) {
-    console.error('Update user settings error:', error);
-    throw error;
-  }
+// Get Admin Profile
+export const getAdminProfile = async () => {
+  return makeAuthenticatedRequest(ADMIN_API_BASE_URL, '/profile/', {
+    method: 'GET',
+  });
 };
 
+// Update Admin Privileges
+export const updateAdminPrivileges = async (privileges) => {
+  return makeAuthenticatedRequest(ADMIN_API_BASE_URL, '/update-privileges/', {
+    method: 'PUT',
+    body: JSON.stringify({ privileges }),
+  });
+};

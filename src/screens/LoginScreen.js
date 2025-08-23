@@ -1,140 +1,71 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, layout } from '../styles';
-import InputField from '../components/InputField';
-import Button from '../components/Button';
-import { loginUser } from '../services/auth';
+import React, { useState } from "react";
+import { View, Text, TextInput, TouchableOpacity } from "react-native";
+import { loginUser } from "../services/api";
 
-export default function LoginScreen({ navigation, route }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const { onAuthStateChange } = route.params || {};
+export default function LoginScreen({ navigation }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false); // toggle between admin & user
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    setIsLoading(true);
     try {
-      await loginUser(email, password);
-      // Call the auth state change function to trigger navigation
-      if (onAuthStateChange) {
-        onAuthStateChange(true);
+      const res = await loginUser({
+        username,
+        password,
+        role: isAdmin ? "admin" : "student", // 👈 pass role
+      });
+
+      if (res.token) {
+        if (isAdmin) {
+          navigation.navigate("AdminDashboard"); // 👈 redirect to admin page
+        } else {
+          navigation.navigate("UserDashboard");
+        }
       }
-    } catch (error) {
-      Alert.alert('Login Failed', error.message);
-    } finally {
-      setIsLoading(false);
+    } catch (err) {
+      console.error(err);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to your account</Text>
-        </View>
+    <View style={{ padding: 20 }}>
+      <Text style={{ fontSize: 20, fontWeight: "bold" }}>Login</Text>
 
-        <View style={styles.form}>
-          <InputField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          
-          <InputField
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            secureTextEntry
-          />
+      <TextInput
+        placeholder="Username"
+        value={username}
+        onChangeText={setUsername}
+        style={{ borderWidth: 1, marginBottom: 10, padding: 8 }}
+      />
 
-          <Button
-            title="Login"
-            onPress={handleLogin}
-            loading={isLoading}
-            style={styles.loginButton}
-          />
-        </View>
+      <TextInput
+        placeholder="Password"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+        style={{ borderWidth: 1, marginBottom: 10, padding: 8 }}
+      />
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.linkText}>Sign Up</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </SafeAreaView>
+      {/* Toggle for Admin / User */}
+      <TouchableOpacity
+        onPress={() => setIsAdmin(!isAdmin)}
+        style={{
+          backgroundColor: isAdmin ? "tomato" : "skyblue",
+          padding: 10,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: "white", textAlign: "center" }}>
+          {isAdmin ? "Switch to User Login" : "Switch to Admin Login"}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={handleLogin}
+        style={{ backgroundColor: "green", padding: 10 }}
+      >
+        <Text style={{ color: "white", textAlign: "center" }}>Login</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: layout.padding.large,
-    paddingVertical: layout.padding.extraLarge,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: layout.spacing.extraLarge,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: layout.spacing.large,
-  },
-  backButtonText: {
-    ...typography.body2,
-    color: colors.primary,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.textPrimary,
-    marginBottom: layout.spacing.small,
-  },
-  subtitle: {
-    ...typography.body1,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  form: {
-    flex: 1,
-    gap: layout.spacing.large,
-  },
-  loginButton: {
-    marginTop: layout.spacing.medium,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: layout.spacing.large,
-  },
-  footerText: {
-    ...typography.body2,
-    color: colors.textSecondary,
-  },
-  linkText: {
-    ...typography.body2,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-});
