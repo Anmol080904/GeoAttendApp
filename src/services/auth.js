@@ -9,6 +9,7 @@ export const loginUser = async (username, password) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-API-KEY":"megha"
       },
       body: JSON.stringify({ username, password }),
     });
